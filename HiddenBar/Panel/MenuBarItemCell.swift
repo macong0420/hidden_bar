@@ -4,6 +4,8 @@ import CoreGraphics
 @MainActor
 protocol MenuBarItemCellDelegate: AnyObject {
     func cellWasClicked(_ cell: MenuBarItemCell)
+    func cellRequestsAllowlistToggle(_ cell: MenuBarItemCell)
+    func cellIsInAllowlist(_ cell: MenuBarItemCell) -> Bool
 }
 
 @MainActor
@@ -13,6 +15,7 @@ final class MenuBarItemCell: NSView {
 
     private let imageView: NSImageView
     private let hoverBackground: NSView
+    private let pinBadge: NSImageView
     private var trackingArea: NSTrackingArea?
     private var isHovering = false {
         didSet { hoverBackground.layer?.opacity = isHovering ? 1 : 0 }
@@ -22,6 +25,7 @@ final class MenuBarItemCell: NSView {
         self.item = item
         self.imageView = NSImageView()
         self.hoverBackground = NSView()
+        self.pinBadge = NSImageView()
         super.init(frame: .zero)
         setupSubviews()
     }
@@ -35,11 +39,16 @@ final class MenuBarItemCell: NSView {
             imageView.image = placeholderImage()
             return
         }
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
         let size = NSSize(
-            width: CGFloat(cgImage.width) / max(1, NSScreen.main?.backingScaleFactor ?? 2),
-            height: CGFloat(cgImage.height) / max(1, NSScreen.main?.backingScaleFactor ?? 2)
+            width: CGFloat(cgImage.width) / max(1, scale),
+            height: CGFloat(cgImage.height) / max(1, scale)
         )
         imageView.image = NSImage(cgImage: cgImage, size: size)
+    }
+
+    func updateAllowlistBadge(isAllowlisted: Bool) {
+        pinBadge.isHidden = !isAllowlisted
     }
 
     override func updateTrackingAreas() {
@@ -64,6 +73,22 @@ final class MenuBarItemCell: NSView {
         delegate?.cellWasClicked(self)
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        let isAllowlisted = delegate?.cellIsInAllowlist(self) ?? false
+        let menu = NSMenu()
+        let title = isAllowlisted
+            ? "Remove from “Always Show”"
+            : "Always show in menu bar"
+        let toggle = NSMenuItem(title: title, action: #selector(toggleAllowlistAction), keyEquivalent: "")
+        toggle.target = self
+        menu.addItem(toggle)
+        menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+    }
+
+    @objc private func toggleAllowlistAction() {
+        delegate?.cellRequestsAllowlistToggle(self)
+    }
+
     private func setupSubviews() {
         wantsLayer = true
         layer?.cornerRadius = 6
@@ -82,6 +107,14 @@ final class MenuBarItemCell: NSView {
         imageView.image = placeholderImage()
         addSubview(imageView)
 
+        pinBadge.translatesAutoresizingMaskIntoConstraints = false
+        let configuration = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        pinBadge.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Always visible")?
+            .withSymbolConfiguration(configuration)
+        pinBadge.contentTintColor = .controlAccentColor
+        pinBadge.isHidden = true
+        addSubview(pinBadge)
+
         NSLayoutConstraint.activate([
             hoverBackground.leadingAnchor.constraint(equalTo: leadingAnchor),
             hoverBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -91,10 +124,15 @@ final class MenuBarItemCell: NSView {
             imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
             imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             imageView.widthAnchor.constraint(equalTo: widthAnchor, constant: -4),
-            imageView.heightAnchor.constraint(equalTo: heightAnchor, constant: -4)
+            imageView.heightAnchor.constraint(equalTo: heightAnchor, constant: -4),
+
+            pinBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            pinBadge.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            pinBadge.widthAnchor.constraint(equalToConstant: 10),
+            pinBadge.heightAnchor.constraint(equalToConstant: 10)
         ])
 
-        toolTip = item.ownerName.isEmpty ? "Menu bar item" : item.ownerName
+        toolTip = item.displayName.isEmpty ? item.ownerName : item.displayName
     }
 
     private func placeholderImage() -> NSImage {

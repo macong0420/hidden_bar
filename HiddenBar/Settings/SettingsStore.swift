@@ -37,7 +37,7 @@ final class SettingsStore: ObservableObject {
             let data = try encoder.encode(preferences)
             defaults.set(data, forKey: Key.preferences)
         } catch {
-            Logger.app.error("Failed to encode preferences: \(error.localizedDescription, privacy: .public)")
+            Logger.app.error("Failed to encode preferences: \(error.localizedDescription)")
         }
     }
 }

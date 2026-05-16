@@ -30,7 +30,7 @@ final class LaunchAtLoginManager: ObservableObject {
             lastError = nil
         } catch {
             lastError = error.localizedDescription
-            Logger.app.error("Launch at login update failed: \(error.localizedDescription, privacy: .public)")
+            Logger.app.error("Launch at login update failed: \(error.localizedDescription)")
         }
         refresh()
     }

@@ -26,7 +26,7 @@ final class MouseEventForwarder {
             mouseCursorPosition: point,
             mouseButton: .left
         ) else {
-            Logger.events.error("Failed to synthesize click events at \(String(describing: point), privacy: .public).")
+            Logger.events.error("Failed to synthesize click events at \(String(describing: point)).")
             return
         }
 

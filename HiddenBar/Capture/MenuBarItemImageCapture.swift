@@ -10,11 +10,8 @@ final class MenuBarItemImageCapture {
     }
 
     private var cache: [CacheKey: CGImage] = [:]
-    private let backingScale: CGFloat
 
-    init(backingScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2) {
-        self.backingScale = backingScale
-    }
+    init() {}
 
     func clearCache() {
         cache.removeAll()
@@ -24,55 +21,79 @@ final class MenuBarItemImageCapture {
         guard !items.isEmpty else { return [:] }
 
         var results: [CGWindowID: CGImage] = [:]
+        var missing: [MenuBarItem] = []
+
         for item in items {
-            if let cached = cache[Self.makeKey(item: item)] {
+            let key = Self.makeKey(item: item)
+            if let cached = cache[key] {
                 results[item.windowID] = cached
+            } else {
+                missing.append(item)
             }
         }
 
-        let missing = items.filter { results[$0.windowID] == nil }
         guard !missing.isEmpty else { return results }
 
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
-            for item in missing {
-                guard let window = content.windows.first(where: { $0.windowID == item.windowID }) else {
-                    Logger.capture.debug("Missing SCWindow for \(item.windowID, privacy: .public) — likely permission gap.")
-                    continue
-                }
-                if let image = await captureSingle(window: window, item: item) {
-                    cache[Self.makeKey(item: item)] = image
-                    results[item.windowID] = image
-                }
+        for item in missing {
+            if let image = captureUsingLegacyAPI(item: item) {
+                cache[Self.makeKey(item: item)] = image
+                results[item.windowID] = image
             }
-        } catch {
-            Logger.capture.error("SCShareableContent failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        if results.count < items.count {
+            await captureViaScreenCaptureKit(items: items.filter { results[$0.windowID] == nil }, into: &results)
         }
 
         return results
     }
 
-    private func captureSingle(window: SCWindow, item: MenuBarItem) async -> CGImage? {
-        let filter = SCContentFilter(desktopIndependentWindow: window)
-        let configuration = SCStreamConfiguration()
-        configuration.width = Int((item.frame.width * backingScale).rounded(.up))
-        configuration.height = Int((item.frame.height * backingScale).rounded(.up))
-        configuration.scalesToFit = true
-        configuration.showsCursor = false
-        configuration.ignoreShadowsSingleWindow = true
-        configuration.capturesShadowsOnly = false
+    private func captureUsingLegacyAPI(item: MenuBarItem) -> CGImage? {
+        let listOption: UInt32 = 1 << 3   // kCGWindowListOptionIncludingWindow
+        let imageOption: UInt32 = (1 << 0) | (1 << 1)  // boundsIgnoreFraming | bestResolution
+        guard let unmanaged = legacyCGWindowListCreateImage(
+            .null,
+            listOption,
+            item.windowID,
+            imageOption
+        ) else { return nil }
+        let image = unmanaged.takeRetainedValue()
+        guard image.width > 0, image.height > 0 else { return nil }
+        return image
+    }
 
+    private func captureViaScreenCaptureKit(
+        items: [MenuBarItem],
+        into results: inout [CGWindowID: CGImage]
+    ) async {
+        guard !items.isEmpty else { return }
         do {
-            return try await SCScreenshotManager.captureImage(
-                contentFilter: filter,
-                configuration: configuration
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
             )
+            let scale = NSScreen.main?.backingScaleFactor ?? 2
+            for item in items {
+                guard let window = content.windows.first(where: { $0.windowID == item.windowID }) else { continue }
+                let filter = SCContentFilter(desktopIndependentWindow: window)
+                let configuration = SCStreamConfiguration()
+                configuration.width = Int((item.frame.width * scale).rounded(.up))
+                configuration.height = Int((item.frame.height * scale).rounded(.up))
+                configuration.scalesToFit = true
+                configuration.showsCursor = false
+                do {
+                    let image = try await SCScreenshotManager.captureImage(
+                        contentFilter: filter,
+                        configuration: configuration
+                    )
+                    cache[Self.makeKey(item: item)] = image
+                    results[item.windowID] = image
+                } catch {
+                    Logger.capture.debug("SCK capture failed for windowID \(item.windowID): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            Logger.capture.error("Capture failed for windowID \(item.windowID): \(error.localizedDescription, privacy: .public)")
-            return nil
+            Logger.capture.debug("SCShareableContent unavailable: \(error.localizedDescription)")
         }
     }
 
@@ -80,3 +101,11 @@ final class MenuBarItemImageCapture {
         CacheKey(windowID: item.windowID, widthBucket: Int(item.frame.width.rounded()))
     }
 }
+
+@_silgen_name("CGWindowListCreateImage")
+private func legacyCGWindowListCreateImage(
+    _ screenBounds: CGRect,
+    _ listOption: UInt32,
+    _ windowID: CGWindowID,
+    _ imageOption: UInt32
+) -> Unmanaged<CGImage>?

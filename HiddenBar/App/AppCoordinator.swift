@@ -9,6 +9,8 @@ final class AppCoordinator {
     let panelController: IconPanelController
     let mouseForwarder: MouseEventForwarder
     let launchAtLogin: LaunchAtLoginManager
+    let allowlistSync: AllowlistSyncCoordinator
+    let appsCatalog: AppsCatalog
 
     private var cancellables: Set<AnyCancellable> = []
     private var globalClickMonitor: GlobalEventMonitor?
@@ -21,12 +23,19 @@ final class AppCoordinator {
         let capture = MenuBarItemImageCapture()
         let forwarder = MouseEventForwarder()
         let launchAtLogin = LaunchAtLoginManager()
+        let mover = MenuBarItemMover()
+        let appsCatalog = AppsCatalog(enumerator: enumerator, capture: capture)
 
         let menuBarManager = MenuBarManager(settings: settings, enumerator: enumerator)
         let panelController = IconPanelController(
             settings: settings,
             capture: capture,
             forwarder: forwarder
+        )
+        let allowlistSync = AllowlistSyncCoordinator(
+            menuBarManager: menuBarManager,
+            settings: settings,
+            mover: mover
         )
 
         self.settings = settings
@@ -35,11 +44,24 @@ final class AppCoordinator {
         self.panelController = panelController
         self.mouseForwarder = forwarder
         self.launchAtLogin = launchAtLogin
+        self.allowlistSync = allowlistSync
+        self.appsCatalog = appsCatalog
     }
 
     func start() {
         menuBarManager.install()
         permissions.bootstrap()
+
+        appsCatalog.itemsSampler = { [weak self] completion in
+            guard let self else { completion([], nil); return }
+            self.menuBarManager.revealAndSampleItems(then: completion)
+        }
+        allowlistSync.itemsSampler = { [weak self] completion in
+            guard let self else { completion([], nil); return }
+            self.menuBarManager.revealAndSampleItems(then: completion)
+        }
+
+        allowlistSync.start()
 
         menuBarManager.onToggle = { [weak self] in
             self?.panelController.toggle()
@@ -91,6 +113,7 @@ final class AppCoordinator {
         globalClickMonitor?.stop()
         globalClickMonitor = nil
         cancellables.removeAll()
+        allowlistSync.stop()
         panelController.dismiss(animated: false)
         menuBarManager.uninstall()
     }
@@ -99,7 +122,8 @@ final class AppCoordinator {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(
                 settings: settings,
-                launchAtLogin: launchAtLogin
+                launchAtLogin: launchAtLogin,
+                appsCatalog: appsCatalog
             )
         }
         settingsWindowController?.present()

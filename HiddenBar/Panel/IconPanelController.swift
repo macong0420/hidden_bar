@@ -118,15 +118,20 @@ final class IconPanelController {
             return
         }
 
+        let allowlist = settings.preferences.alwaysVisibleApps
         panel.apply(layout: layout)
-        panel.iconBarView.render(layout: layout, images: [:])
+        panel.iconBarView.render(layout: layout, images: [:], allowlist: allowlist)
         panel.orderFrontRegardless()
 
         Task { [weak self] in
             guard let self else { return }
             let images = await self.capture.captureImages(for: items)
             guard self.panel.isVisible else { return }
-            self.panel.iconBarView.render(layout: layout, images: images)
+            self.panel.iconBarView.render(
+                layout: layout,
+                images: images,
+                allowlist: self.settings.preferences.alwaysVisibleApps
+            )
         }
 
         scheduleAutoHide()
@@ -150,6 +155,7 @@ final class IconPanelController {
         let anchorCG = ScreenGeometry.cgRect(fromScreen: anchor.frame, on: anchor.screen)
         return allItems
             .filter { item in
+                !item.isSystemMenuExtra &&
                 !Self.systemMenuBarProcesses.contains(item.ownerName) &&
                 item.frame.midX < anchorCG.minX
             }
@@ -167,5 +173,22 @@ extension IconPanelController: MenuBarItemCellDelegate {
         } else {
             forwarder.forwardClick(at: target)
         }
+    }
+
+    func cellRequestsAllowlistToggle(_ cell: MenuBarItemCell) {
+        let identifier = cell.item.canonicalIdentifier
+        let willBeAllowlisted = !settings.preferences.alwaysVisibleApps.contains(identifier)
+        settings.update {
+            if willBeAllowlisted {
+                $0.alwaysVisibleApps.insert(identifier)
+            } else {
+                $0.alwaysVisibleApps.remove(identifier)
+            }
+        }
+        cell.updateAllowlistBadge(isAllowlisted: willBeAllowlisted)
+    }
+
+    func cellIsInAllowlist(_ cell: MenuBarItemCell) -> Bool {
+        settings.preferences.alwaysVisibleApps.contains(cell.item.canonicalIdentifier)
     }
 }

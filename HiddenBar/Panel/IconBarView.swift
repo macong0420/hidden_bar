@@ -8,7 +8,7 @@ final class IconBarView: NSView {
 
     override var isFlipped: Bool { false }
 
-    func render(layout: PanelLayout, images: [CGWindowID: CGImage]) {
+    func render(layout: PanelLayout, images: [CGWindowID: CGImage], allowlist: Set<String>) {
         var newCells: [CGWindowID: MenuBarItemCell] = [:]
         let layoutIDs = Set(layout.placements.map { $0.item.windowID })
 
@@ -27,6 +27,7 @@ final class IconBarView: NSView {
             }
             cell.frame = placement.frameInPanel
             cell.updateImage(images[placement.item.windowID])
+            cell.updateAllowlistBadge(isAllowlisted: allowlist.contains(placement.item.canonicalIdentifier))
             newCells[placement.item.windowID] = cell
         }
 

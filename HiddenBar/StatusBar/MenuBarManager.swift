@@ -52,6 +52,14 @@ final class MenuBarManager {
         visibleControl?.windowScreen
     }
 
+    var visibleControlAsMenuBarItem: MenuBarItem? {
+        visibleControl?.asMenuBarItem(displayName: "HiddenBar « Toggle")
+    }
+
+    var hiddenControlAsMenuBarItem: MenuBarItem? {
+        hiddenControl?.asMenuBarItem(displayName: "HiddenBar Hidden Divider")
+    }
+
     func temporarilyRevealHiddenIcons(for duration: TimeInterval, then completion: @escaping () -> Void) {
         guard let hidden = hiddenControl else {
             completion()
@@ -82,6 +90,27 @@ final class MenuBarManager {
             hidden.state = .hideItems
             completion(items, screen)
         }
+    }
+
+    func withHiddenItemsRevealed<T>(
+        settleDelay: Duration = .milliseconds(80),
+        operation: @MainActor ([MenuBarItem], NSScreen) async -> T
+    ) async -> T? {
+        guard let hidden = hiddenControl, let screen = visibleControl?.windowScreen ?? NSScreen.main else {
+            return nil
+        }
+
+        hidden.state = .showItems
+        defer { hidden.state = .hideItems }
+
+        do {
+            try await Task.sleep(for: settleDelay)
+        } catch {
+            return nil
+        }
+
+        let items = enumerator.currentItems(on: screen)
+        return await operation(items, screen)
     }
 
     private func presentContextMenu() {

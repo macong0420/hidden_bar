@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
+    @ObservedObject var appsCatalog: AppsCatalog
 
     var body: some View {
         TabView {
@@ -11,8 +12,10 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             PanelTab(settings: settings)
                 .tabItem { Label("Panel", systemImage: "rectangle.bottomthird.inset.filled") }
+            AppsTab(settings: settings, catalog: appsCatalog)
+                .tabItem { Label("Apps", systemImage: "app.badge") }
         }
-        .frame(width: 500, height: 420)
+        .frame(width: 540, height: 480)
     }
 }
 

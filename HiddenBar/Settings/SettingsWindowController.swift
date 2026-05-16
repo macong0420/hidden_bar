@@ -5,18 +5,28 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let settings: SettingsStore
     private let launchAtLogin: LaunchAtLoginManager
+    private let appsCatalog: AppsCatalog
 
-    init(settings: SettingsStore, launchAtLogin: LaunchAtLoginManager) {
+    init(
+        settings: SettingsStore,
+        launchAtLogin: LaunchAtLoginManager,
+        appsCatalog: AppsCatalog
+    ) {
         self.settings = settings
         self.launchAtLogin = launchAtLogin
+        self.appsCatalog = appsCatalog
 
-        let rootView = SettingsView(settings: settings, launchAtLogin: launchAtLogin)
+        let rootView = SettingsView(
+            settings: settings,
+            launchAtLogin: launchAtLogin,
+            appsCatalog: appsCatalog
+        )
         let hosting = NSHostingController(rootView: rootView)
 
         let window = NSWindow(contentViewController: hosting)
         window.title = "HiddenBar Preferences"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-        window.setContentSize(NSSize(width: 500, height: 420))
+        window.setContentSize(NSSize(width: 540, height: 480))
         window.isReleasedWhenClosed = false
         window.center()
         window.titlebarAppearsTransparent = false

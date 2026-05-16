@@ -54,9 +54,80 @@ final class ControlItem {
 
     var windowScreen: NSScreen? { window?.screen }
 
+    private var cachedWindowID: CGWindowID?
+
     var windowID: CGWindowID? {
+        if let cached = cachedWindowID, Bridging.getWindowFrame(for: cached) != nil {
+            return cached
+        }
         guard let window else { return nil }
-        return CGWindowID(window.windowNumber)
+        let number = window.windowNumber
+        if number > 0, let id = CGWindowID(exactly: number), Bridging.getWindowFrame(for: id) != nil {
+            cachedWindowID = id
+            return id
+        }
+        if let resolved = resolveStatusItemWindowID() {
+            cachedWindowID = resolved
+            return resolved
+        }
+        return nil
+    }
+
+    private func resolveStatusItemWindowID() -> CGWindowID? {
+        guard let buttonWindow = statusItem.button?.window else { return nil }
+        guard let screen = buttonWindow.screen ?? NSScreen.main else { return nil }
+        let nsFrame = buttonWindow.frame
+        guard nsFrame.width > 0, nsFrame.height > 0 else { return nil }
+
+        let expectedCG = ScreenGeometry.cgRect(fromScreen: nsFrame, on: screen)
+
+        let menuBarIDs = Bridging.getWindowList(option: [.menuBarItems])
+        var bestID: CGWindowID?
+        var bestDelta: CGFloat = .infinity
+
+        for id in menuBarIDs {
+            guard let frame = Bridging.getWindowFrame(for: id) else { continue }
+            let dx = abs(frame.minX - expectedCG.minX)
+            if dx < bestDelta {
+                bestDelta = dx
+                bestID = id
+            }
+        }
+
+        if let bestID, bestDelta < 6 {
+            Logger.menuBar.debug("Resolved \(identifier.rawValue) windowID \(bestID) (dx=\(bestDelta))")
+            return bestID
+        }
+
+        Logger.menuBar.warning(
+            "Could not resolve \(identifier.rawValue) windowID; menuBarIDs=\(menuBarIDs.count) bestDelta=\(bestDelta) expectedX=\(expectedCG.minX)"
+        )
+
+        let ownPid = ProcessInfo.processInfo.processIdentifier
+        let statusLayer = Int(CGWindowLevelForKey(.statusWindow))
+        guard let info = CGWindowListCopyWindowInfo(
+            [.optionAll],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return nil
+        }
+        for dict in info {
+            guard let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid == ownPid else { continue }
+            guard let layer = dict[kCGWindowLayer as String] as? Int, layer == statusLayer else { continue }
+            guard let id = dict[kCGWindowNumber as String] as? CGWindowID else { continue }
+            guard let bounds = dict[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
+            let frame = CGRect(
+                x: bounds["X"] ?? 0,
+                y: bounds["Y"] ?? 0,
+                width: bounds["Width"] ?? 0,
+                height: bounds["Height"] ?? 0
+            )
+            if abs(frame.minX - expectedCG.minX) < 8 {
+                Logger.menuBar.debug("Resolved \(identifier.rawValue) via CGWindowList: id=\(id) frame=\(frame)")
+                return id
+            }
+        }
+        return nil
     }
 
     init(identifier: Identifier) {
@@ -131,5 +202,22 @@ final class ControlItem {
         } else {
             onPrimaryAction?()
         }
+    }
+}
+
+extension ControlItem {
+    func asMenuBarItem(displayName: String) -> MenuBarItem? {
+        guard let windowID else { return nil }
+        let bundle = Bundle.main
+        let ownerName = bundle.infoDictionary?["CFBundleName"] as? String ?? "HiddenBar"
+        return MenuBarItem(
+            windowID: windowID,
+            ownerPID: ProcessInfo.processInfo.processIdentifier,
+            ownerName: ownerName,
+            bundleIdentifier: bundle.bundleIdentifier,
+            title: displayName,
+            displayName: displayName,
+            frame: windowFrame ?? .zero
+        )
     }
 }
