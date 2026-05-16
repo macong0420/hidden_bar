@@ -8,9 +8,11 @@ final class AppCoordinator {
     let menuBarManager: MenuBarManager
     let panelController: IconPanelController
     let mouseForwarder: MouseEventForwarder
+    let launchAtLogin: LaunchAtLoginManager
 
     private var cancellables: Set<AnyCancellable> = []
     private var globalClickMonitor: GlobalEventMonitor?
+    private var settingsWindowController: SettingsWindowController?
 
     init() {
         let settings = SettingsStore()
@@ -18,6 +20,7 @@ final class AppCoordinator {
         let enumerator = MenuBarItemEnumerator()
         let capture = MenuBarItemImageCapture()
         let forwarder = MouseEventForwarder()
+        let launchAtLogin = LaunchAtLoginManager()
 
         let menuBarManager = MenuBarManager(settings: settings, enumerator: enumerator)
         let panelController = IconPanelController(
@@ -31,6 +34,7 @@ final class AppCoordinator {
         self.menuBarManager = menuBarManager
         self.panelController = panelController
         self.mouseForwarder = forwarder
+        self.launchAtLogin = launchAtLogin
     }
 
     func start() {
@@ -92,6 +96,12 @@ final class AppCoordinator {
     }
 
     private func showPreferences() {
-        Logger.app.info("Preferences pane is part of the L3 milestone; not wired yet.")
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(
+                settings: settings,
+                launchAtLogin: launchAtLogin
+            )
+        }
+        settingsWindowController?.present()
     }
 }

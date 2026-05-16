@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class SettingsStore {
+final class SettingsStore: ObservableObject {
     private enum Key {
         static let preferences = "com.HiddenBar.preferences.v1"
     }
