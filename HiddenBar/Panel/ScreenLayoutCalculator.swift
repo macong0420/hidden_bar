@@ -12,6 +12,8 @@ struct PanelLayout: Equatable {
 }
 
 enum ScreenLayoutCalculator {
+    private static let maxColumnsPerRow = 8
+
     static func layout(
         items: [MenuBarItem],
         anchor: CGRect,
@@ -24,7 +26,7 @@ enum ScreenLayoutCalculator {
         let spacing = preferences.itemSpacing
         let rowSpacing = preferences.rowSpacing
         let padding = preferences.panelPadding
-        let maxItemsPerRow = max(1, preferences.maxItemsPerRow)
+        let maxItemsPerRow = max(1, Self.maxColumnsPerRow)
 
         let itemCount = items.count
         let widestRowCount = min(maxItemsPerRow, itemCount)
@@ -52,8 +54,7 @@ enum ScreenLayoutCalculator {
             preferences: preferences
         )
 
-        var panelFrame = NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight)
-        panelFrame = avoidNotch(panelFrame: panelFrame, screen: screen, preferences: preferences)
+        let panelFrame = NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight)
 
         let placements = placeCells(
             items: items,

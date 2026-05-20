@@ -7,6 +7,12 @@ enum ScreenGeometry {
         NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main
     }
 
+    static func screenContaining(rect: CGRect) -> NSScreen? {
+        NSScreen.screens
+            .max { lhs, rhs in lhs.frame.intersection(rect).area < rhs.frame.intersection(rect).area }
+            ?? NSScreen.main
+    }
+
     static func notchRect(for screen: NSScreen) -> CGRect? {
         let auxLeft = screen.auxiliaryTopLeftArea ?? .zero
         let auxRight = screen.auxiliaryTopRightArea ?? .zero
@@ -35,13 +41,13 @@ enum ScreenGeometry {
     }
 
     static func cgPoint(fromScreen point: NSPoint, on screen: NSScreen) -> CGPoint {
-        CGPoint(x: point.x, y: screen.frame.maxY - point.y)
+        CGPoint(x: point.x, y: desktopTopY - point.y)
     }
 
     static func cgRect(fromScreen rect: NSRect, on screen: NSScreen) -> CGRect {
         CGRect(
             x: rect.minX,
-            y: screen.frame.maxY - rect.maxY,
+            y: desktopTopY - rect.maxY,
             width: rect.width,
             height: rect.height
         )
@@ -50,9 +56,20 @@ enum ScreenGeometry {
     static func screenRect(fromCGRect rect: CGRect, on screen: NSScreen) -> NSRect {
         NSRect(
             x: rect.minX,
-            y: screen.frame.maxY - rect.maxY,
+            y: desktopTopY - rect.maxY,
             width: rect.width,
             height: rect.height
         )
+    }
+
+    private static var desktopTopY: CGFloat {
+        NSScreen.screens.map(\.frame.maxY).max() ?? NSScreen.main?.frame.maxY ?? 0
+    }
+}
+
+private extension CGRect {
+    var area: CGFloat {
+        guard width > 0, height > 0 else { return 0 }
+        return width * height
     }
 }

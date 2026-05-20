@@ -54,6 +54,9 @@ final class ControlItem {
 
     var windowScreen: NSScreen? { window?.screen }
 
+    private(set) var lastInteractionFrame: CGRect?
+    private(set) var lastInteractionScreen: NSScreen?
+
     private var cachedWindowID: CGWindowID?
 
     var windowID: CGWindowID? {
@@ -196,6 +199,11 @@ final class ControlItem {
     }
 
     @objc private func handleClick(_ sender: NSStatusBarButton) {
+        if let window = sender.window {
+            lastInteractionFrame = window.frame
+            lastInteractionScreen = window.screen ?? ScreenGeometry.screenContaining(rect: window.frame)
+        }
+
         let event = NSApp.currentEvent
         if event?.type == .rightMouseUp || event?.modifierFlags.contains(.option) == true {
             onSecondaryAction?()

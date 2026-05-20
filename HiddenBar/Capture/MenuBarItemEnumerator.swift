@@ -7,14 +7,32 @@ final class MenuBarItemEnumerator {
     private let statusLayer = Int(CGWindowLevelForKey(.statusWindow))
 
     func currentItems(on screen: NSScreen) -> [MenuBarItem] {
+        currentItems(on: [screen], preferredScreen: screen, removesDuplicates: false)
+    }
+
+    func currentItemsAcrossScreens(preferredScreen: NSScreen) -> [MenuBarItem] {
+        currentItems(on: NSScreen.screens, preferredScreen: preferredScreen, removesDuplicates: true)
+    }
+
+    private func currentItems(
+        on screens: [NSScreen],
+        preferredScreen: NSScreen,
+        removesDuplicates: Bool
+    ) -> [MenuBarItem] {
         let infoArray = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements],
             kCGNullWindowID
         ) as? [[String: Any]] ?? []
 
-        let menuBarCGFrame = ScreenGeometry.cgRect(
-            fromScreen: ScreenGeometry.menuBarFrame(for: screen),
-            on: screen
+        let menuBarCGFrames = screens.map {
+            ScreenGeometry.cgRect(
+                fromScreen: ScreenGeometry.menuBarFrame(for: $0),
+                on: $0
+            )
+        }
+        let preferredMenuBarCGFrame = ScreenGeometry.cgRect(
+            fromScreen: ScreenGeometry.menuBarFrame(for: preferredScreen),
+            on: preferredScreen
         )
 
         var metadata = MenuBarItemAXMetadataResolver.currentMetadata(excluding: ownPID)
@@ -22,10 +40,18 @@ final class MenuBarItemEnumerator {
         items.reserveCapacity(infoArray.count)
 
         for dict in infoArray {
-            guard let item = parseItem(from: dict, menuBar: menuBarCGFrame, metadata: &metadata) else {
+            guard let item = parseItem(from: dict, menuBars: menuBarCGFrames, metadata: &metadata) else {
                 continue
             }
             items.append(item)
+        }
+
+        if removesDuplicates {
+            let uniqueItems = deduplicated(items: items, preferredMenuBar: preferredMenuBarCGFrame)
+            Logger.menuBar.debug(
+                "Across-screen sampling: raw=\(items.count) unique=\(uniqueItems.count) preferred=\(preferredScreen.localizedName)"
+            )
+            return uniqueItems.sorted { $0.frame.minX < $1.frame.minX }
         }
 
         return items.sorted { $0.frame.minX < $1.frame.minX }
@@ -33,7 +59,7 @@ final class MenuBarItemEnumerator {
 
     private func parseItem(
         from dict: [String: Any],
-        menuBar: CGRect,
+        menuBars: [CGRect],
         metadata: inout [MenuBarItemAXMetadata]
     ) -> MenuBarItem? {
         guard let layer = dict[kCGWindowLayer as String] as? Int,
@@ -53,9 +79,9 @@ final class MenuBarItemEnumerator {
             height: boundsDict["Height"] ?? 0
         )
 
-        guard frame.intersects(menuBar) else { return nil }
+        guard menuBars.contains(where: { frame.intersects($0) }) else { return nil }
         guard frame.width >= 6, frame.width <= 320 else { return nil }
-        guard frame.height >= 16, frame.height <= 32 else { return nil }
+        guard frame.height >= 16, frame.height <= 48 else { return nil }
 
         let ownerName = dict[kCGWindowOwnerName as String] as? String ?? ""
         let title = dict[kCGWindowName as String] as? String
@@ -89,6 +115,61 @@ final class MenuBarItemEnumerator {
             displayName: displayName,
             frame: frame
         )
+    }
+
+    private func deduplicated(items: [MenuBarItem], preferredMenuBar: CGRect) -> [MenuBarItem] {
+        var uniqueItems: [String: MenuBarItem] = [:]
+        uniqueItems.reserveCapacity(items.count)
+
+        for item in items {
+            let key = Self.deduplicationKey(for: item)
+            guard let existing = uniqueItems[key] else {
+                uniqueItems[key] = item
+                continue
+            }
+
+            if shouldPrefer(item, over: existing, preferredMenuBar: preferredMenuBar) {
+                uniqueItems[key] = item
+            }
+        }
+
+        return Array(uniqueItems.values)
+    }
+
+    private func shouldPrefer(
+        _ candidate: MenuBarItem,
+        over existing: MenuBarItem,
+        preferredMenuBar: CGRect
+    ) -> Bool {
+        let candidateOnPreferredScreen = candidate.frame.intersects(preferredMenuBar)
+        let existingOnPreferredScreen = existing.frame.intersects(preferredMenuBar)
+        if candidateOnPreferredScreen != existingOnPreferredScreen {
+            return candidateOnPreferredScreen
+        }
+
+        return candidate.frame.maxX > existing.frame.maxX
+    }
+
+    private static func deduplicationKey(for item: MenuBarItem) -> String {
+        if let bundleIdentifier = item.bundleIdentifier, !bundleIdentifier.isEmpty {
+            if !bundleIdentifier.hasPrefix("com.apple.") {
+                return "bundle:\(bundleIdentifier)"
+            }
+
+            if let title = item.title,
+               !title.isEmpty,
+               !MenuBarItem.isGenericStatusItemTitle(title) {
+                return "apple-title:\(bundleIdentifier):\(title)"
+            }
+        }
+
+        if let title = item.title,
+           !title.isEmpty,
+           !MenuBarItem.isGenericStatusItemTitle(title) {
+            return "owner-title:\(item.ownerName):\(title)"
+        }
+
+        return "window:\(item.windowID)"
     }
 
     private static func displayName(

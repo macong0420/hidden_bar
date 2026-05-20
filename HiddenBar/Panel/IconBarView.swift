@@ -27,7 +27,9 @@ final class IconBarView: NSView {
             }
             cell.frame = placement.frameInPanel
             cell.updateImage(images[placement.item.windowID])
-            cell.updateAllowlistBadge(isAllowlisted: allowlist.contains(placement.item.canonicalIdentifier))
+            cell.updateAllowlistBadge(
+                isAllowlisted: placement.item.isMovable && allowlist.contains(placement.item.canonicalIdentifier)
+            )
             newCells[placement.item.windowID] = cell
         }
 

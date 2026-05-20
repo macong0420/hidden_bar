@@ -74,6 +74,8 @@ final class MenuBarItemCell: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        guard item.isMovable else { return }
+
         let isAllowlisted = delegate?.cellIsInAllowlist(self) ?? false
         let menu = NSMenu()
         let title = isAllowlisted

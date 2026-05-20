@@ -23,21 +23,6 @@ final class IconPanelController {
     private let forwarder: MouseEventForwarder
     private let panel: IconBarPanel
 
-    private static let systemMenuBarProcesses: Set<String> = [
-        "SystemUIServer",
-        "ControlCenter",
-        "WindowManager",
-        "WindowServer",
-        "TextInputMenuAgent",
-        "TextInputSwitcher",
-        "Spotlight",
-        "Siri",
-        "NotificationCenter",
-        "Notification Center",
-        "loginwindow",
-        "AccessibilityVisualsAgent"
-    ]
-
     private var autoHideWorkItem: DispatchWorkItem?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -76,7 +61,7 @@ final class IconPanelController {
         sampler { [weak self] allItems, screen in
             guard let self else { return }
             let targetScreen = screen ?? anchor.screen
-            let items = self.filterDisplayableItems(allItems: allItems, anchor: anchor)
+            let items = self.filterDisplayableItems(allItems: allItems, screen: targetScreen)
             self.renderPanel(items: items, anchor: anchor, screen: targetScreen)
         }
     }
@@ -151,15 +136,15 @@ final class IconPanelController {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    private func filterDisplayableItems(allItems: [MenuBarItem], anchor: PanelAnchor) -> [MenuBarItem] {
-        let anchorCG = ScreenGeometry.cgRect(fromScreen: anchor.frame, on: anchor.screen)
-        return allItems
-            .filter { item in
-                !item.isSystemMenuExtra &&
-                !Self.systemMenuBarProcesses.contains(item.ownerName) &&
-                item.frame.midX < anchorCG.minX
-            }
-            .sorted { $0.frame.minX > $1.frame.minX }
+    private func filterDisplayableItems(
+        allItems: [MenuBarItem],
+        screen: NSScreen
+    ) -> [MenuBarItem] {
+        let items = allItems.sorted { $0.frame.minX > $1.frame.minX }
+        Logger.panel.debug(
+            "Panel showing all sampled items: count=\(items.count) screen=\(screen.localizedName)"
+        )
+        return items
     }
 }
 
